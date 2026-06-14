@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Text Humanizer — Make AI Text Read Human</title>
+<style>
+  :root{
+    --bg:#0e1117; --panel:#161b22; --panel2:#1c232d; --border:#2a313c;
+    --text:#e6edf3; --muted:#8b949e; --accent:#3fb950; --accent2:#2ea043;
+    --danger:#f85149; --radius:14px;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:radial-gradient(1200px 600px at 80% -10%,#1a2230,transparent),var(--bg);
+    color:var(--text); min-height:100vh; line-height:1.5;
+  }
+  header{padding:38px 20px 10px; text-align:center}
+  header h1{margin:0; font-size:30px; letter-spacing:-.5px}
+  header p{margin:8px auto 0; color:var(--muted); max-width:620px; font-size:15px}
+  .wrap{max-width:1100px; margin:24px auto 60px; padding:0 18px}
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:18px}
+  @media(max-width:820px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; display:flex; flex-direction:column}
+  .card h2{margin:0; font-size:13px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); padding:14px 16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center}
+  textarea{
+    width:100%; min-height:340px; resize:vertical; border:0; outline:0;
+    background:transparent; color:var(--text); padding:16px; font-size:15px; line-height:1.6;
+    font-family:inherit;
+  }
+  .out{padding:16px; min-height:340px; font-size:15px; line-height:1.6; white-space:pre-wrap; flex:1}
+  .out.empty{color:var(--muted)}
+  .bar{display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:center; margin:20px 0}
+  button{
+    font:inherit; cursor:pointer; border:1px solid var(--border); background:var(--panel2); color:var(--text);
+    padding:11px 18px; border-radius:10px; transition:.15s; font-weight:500;
+  }
+  button:hover{border-color:#3d4757; background:#222b36}
+  button.primary{background:var(--accent2); border-color:var(--accent2); color:#fff; font-weight:600}
+  button.primary:hover{background:var(--accent)}
+  .opts{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:16px 18px; margin-bottom:18px}
+  .opts h3{margin:0 0 12px; font-size:13px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted)}
+  .opts .row{display:flex; flex-wrap:wrap; gap:14px}
+  label.chk{display:flex; align-items:center; gap:8px; font-size:14px; color:var(--text); cursor:pointer; user-select:none}
+  label.chk input{width:16px; height:16px; accent-color:var(--accent)}
+  .slider{display:flex; align-items:center; gap:10px; font-size:14px; color:var(--muted)}
+  .slider input{accent-color:var(--accent)}
+  .stats{display:flex; gap:18px; font-size:12px; color:var(--muted)}
+  .stats b{color:var(--text); font-weight:600}
+  .note{max-width:1100px; margin:0 auto; padding:16px 18px; color:var(--muted); font-size:13px; background:var(--panel); border:1px solid var(--border); border-radius:var(--radius)}
+  .note b{color:#e3b341}
+  .copied{color:var(--accent); font-size:12px; opacity:0; transition:.2s}
+  .copied.show{opacity:1}
+  .changes{margin-top:8px; font-size:12px; color:var(--muted)}
+  .detector{margin-top:42px; padding-top:34px; border-top:1px solid var(--border)}
+  .gauge{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:20px}
+  .gaugeTop{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:12px}
+  .verdict{font-size:18px; font-weight:700}
+  .scoreNum{font-size:34px; font-weight:800; letter-spacing:-1px}
+  .track{height:14px; border-radius:8px; background:var(--panel2); border:1px solid var(--border); position:relative; overflow:hidden}
+  .fill{position:absolute; top:0; left:0; height:100%; width:0; border-radius:8px; transition:width .5s ease, background .3s}
+  .scaleLabels{display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin-top:8px}
+  .signals{list-style:none; padding:0; margin:14px 0 0; display:grid; gap:6px}
+  .signals li{font-size:13px; color:var(--muted); padding:8px 12px; background:var(--panel2); border:1px solid var(--border); border-radius:8px; display:flex; gap:8px}
+  .signals li b{color:var(--text)}
+</style>
+</head>
+<body>
+<header>
+  <h1>🪶 Text Humanizer</h1>
+  <p>Paste AI-generated text and rewrite it to read more naturally — stripping the punctuation, vocabulary, and rhythm patterns that detectors flag.</p>
+</header>
+
+<div class="wrap">
+  <div class="opts">
+    <h3>Humanization options</h3>
+    <div class="row">
+      <label class="chk"><input type="checkbox" id="o-punct" checked> Fix AI punctuation (em‑dashes, curly quotes)</label>
+      <label class="chk"><input type="checkbox" id="o-vocab" checked> Replace AI buzzwords</label>
+      <label class="chk"><input type="checkbox" id="o-phrases" checked> Cut filler transitions</label>
+      <label class="chk"><input type="checkbox" id="o-contract" checked> Add contractions</label>
+      <label class="chk"><input type="checkbox" id="o-rhythm" checked> Vary sentence rhythm</label>
+      <label class="chk"><input type="checkbox" id="o-imperfect"> Add light human imperfection</label>
+    </div>
+    <div class="slider" style="margin-top:14px">
+      Strength
+      <input type="range" id="strength" min="1" max="3" value="2">
+      <span id="strengthLabel">Balanced</span>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Input <span class="stats"><span><b id="inWords">0</b> words</span></span></h2>
+      <textarea id="input" placeholder="Paste your text here..."></textarea>
+    </div>
+    <div class="card">
+      <h2>Humanized output <span class="stats"><span class="copied" id="copied">Copied!</span> <span><b id="outWords">0</b> words</span></span></h2>
+      <div class="out empty" id="output">Your rewritten text will appear here.</div>
+    </div>
+  </div>
+
+  <div class="bar">
+    <button class="primary" id="run">✨ Humanize</button>
+    <button id="copy">📋 Copy output</button>
+    <button id="useOutput">↓ Send output to detector</button>
+    <button id="sample">Load sample</button>
+    <button id="clear">Clear</button>
+  </div>
+  <div class="changes" id="changes"></div>
+
+  <!-- ============ AI DETECTOR ============ -->
+  <div class="detector">
+    <h2 style="margin:0 0 4px; font-size:20px; letter-spacing:-.3px">🔍 AI Detector</h2>
+    <p style="margin:0 0 16px; color:var(--muted); font-size:14px">Paste text to get an instant estimated AI score, then verify it on GPTZero for the real result.</p>
+    <div class="card" style="margin-bottom:14px">
+      <h2>Text to check <span class="stats"><span><b id="detWords">0</b> words</span></span></h2>
+      <textarea id="detInput" placeholder="Paste text here to check how AI it looks..." style="min-height:180px"></textarea>
+    </div>
+    <div class="bar" style="margin:0 0 16px">
+      <button class="primary" id="check">🔍 Check AI score</button>
+      <button id="gptzero">🚀 Verify on GPTZero</button>
+    </div>
+
+    <div id="result" style="display:none">
+      <div class="gauge">
+        <div class="gaugeTop">
+          <span id="verdict" class="verdict">—</span>
+          <span id="scoreNum" class="scoreNum">0%</span>
+        </div>
+        <div class="track"><div id="fill" class="fill"></div></div>
+        <div class="scaleLabels"><span>Likely human</span><span>Likely AI</span></div>
+      </div>
+      <ul id="signals" class="signals"></ul>
+    </div>
+  </div>
+
+  <div class="note" style="margin-top:20px">
+    <b>Honest note:</b> No tool can guarantee a detector shows 0% AI — detectors update constantly and the only way to be truly undetectable is to write/edit it yourself. This runs entirely in your browser (nothing is uploaded) and applies the edits that most reliably lower AI scores. Always re-read the output: humanizing can change meaning, so proofread before you use it.
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// ---- word banks ----
+const BUZZWORDS = {
+  "delve into":"look at","delve":"dig into","tapestry":"mix","intricate":"complex",
+  "intricacies":"details","myriad":"many","plethora":"plenty","leverage":"use",
+  "leveraging":"using","utilize":"use","utilizing":"using","utilization":"use",
+  "facilitate":"help","facilitates":"helps","endeavor":"try","endeavors":"efforts",
+  "robust":"solid","seamless":"smooth","seamlessly":"smoothly","holistic":"complete",
+  "synergy":"teamwork","paradigm":"model","pivotal":"key","crucial":"important",
+  "realm":"area","landscape":"field","navigate":"handle","navigating":"handling",
+  "underscore":"highlight","underscores":"highlights","testament":"sign",
+  "elevate":"improve","elevates":"improves","embark":"start","embarking":"starting",
+  "foster":"build","fostering":"building","cultivate":"grow","unveil":"reveal",
+  "unleash":"release","harness":"use","harnessing":"using","bolster":"boost",
+  "spearhead":"lead","commendable":"good","noteworthy":"notable","profound":"deep",
+  "nuanced":"subtle","comprehensive":"full","multifaceted":"complex","vibrant":"lively",
+  "game-changer":"big deal","cutting-edge":"new","state-of-the-art":"top",
+  "in today's fast-paced world":"these days","in the realm of":"in",
+  "it is important to note that":"note that","it is worth noting that":"notably,",
+  "a wide array of":"many","a myriad of":"many","wealth of":"lots of"
+};
+const TRANSITIONS = [
+  "moreover,","furthermore,","additionally,","in addition,","consequently,",
+  "subsequently,","notably,","importantly,","indeed,","ultimately,","essentially,",
+  "in essence,","to summarize,","in conclusion,","overall,","that being said,",
+  "as previously mentioned,","it goes without saying that","needless to say,"
+];
+const CONTRACTIONS = {
+  "do not":"don't","does not":"doesn't","did not":"didn't","is not":"isn't",
+  "are not":"aren't","was not":"wasn't","were not":"weren't","cannot":"can't",
+  "can not":"can't","could not":"couldn't","would not":"wouldn't","should not":"shouldn't",
+  "will not":"won't","have not":"haven't","has not":"hasn't","had not":"hadn't",
+  "it is":"it's","it has":"it's","that is":"that's","there is":"there's",
+  "they are":"they're","we are":"we're","you are":"you're","i am":"I'm",
+  "we will":"we'll","you will":"you'll","they will":"they'll","i will":"I'll",
+  "we have":"we've","you have":"you've","they have":"they've","i have":"I've",
+  "let us":"let's"
+};
+
+function preserveCase(orig, repl){
+  if(orig[0] === orig[0].toUpperCase()) return repl[0].toUpperCase()+repl.slice(1);
+  return repl;
+}
+
+function humanize(text, opts){
+  let changes = 0;
+  let t = text;
+
+  if(opts.punct){
+    const before = t;
+    t = t.replace(/[—–]/g, ", ")   // em/en dash -> comma
+         .replace(/\s*,\s*,/g, ",")
+         .replace(/[“”]/g,'"').replace(/[‘’]/g,"'")
+         .replace(/…/g,"...");
+    if(t!==before) changes++;
+  }
+
+  if(opts.vocab){
+    const vocabEntries = Object.entries(BUZZWORDS).sort((a,b)=>b[0].length-a[0].length);
+    for(const [k,v] of vocabEntries){
+      const re = new RegExp("\\b"+k.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"\\b","gi");
+      t = t.replace(re, m => { changes++; return preserveCase(m, v); });
+    }
+  }
+
+  if(opts.phrases){
+    for(const tr of TRANSITIONS){
+      const re = new RegExp("(^|\\.\\s+|\\n\\s*)"+tr.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"\\s*","gi");
+      t = t.replace(re, (m,p1) => { changes++; return p1; });
+    }
+    // capitalize start of sentences that lost their lead-in
+    t = t.replace(/(^|\.\s+|\n\s*)([a-z])/g, (m,p1,p2)=>p1+p2.toUpperCase());
+  }
+
+  if(opts.contract){
+    for(const [k,v] of Object.entries(CONTRACTIONS)){
+      const re = new RegExp("\\b"+k+"\\b","gi");
+      // don't contract every single one if strength is low
+      t = t.replace(re, m => {
+        if(opts.strength===1 && Math.random()<0.4) return m;
+        changes++; return preserveCase(m, v);
+      });
+    }
+  }
+
+  if(opts.rhythm){
+    // split a few long sentences; merge a few short ones for variety
+    let sentences = t.match(/[^.!?]+[.!?]*/g) || [t];
+    sentences = sentences.map(s=>{
+      const words = s.trim().split(/\s+/);
+      if(words.length > (opts.strength>=2?22:30) && /,/.test(s)){
+        // break at a comma near the middle
+        const idx = s.indexOf(",", s.length/3);
+        if(idx>0 && idx < s.length-15){
+          changes++;
+          let a = s.slice(0,idx).trim();
+          let b = s.slice(idx+1).trim();
+          b = b.charAt(0).toUpperCase()+b.slice(1);
+          return a + ". " + b + (/[.!?]$/.test(b)?"":"");
+        }
+      }
+      return s;
+    });
+    t = sentences.join(" ").replace(/\s+/g," ").replace(/\s+([.,!?;:])/g,"$1");
+  }
+
+  if(opts.imperfect){
+    // occasionally start a sentence with a casual connector — sparing
+    const starters = ["Honestly, ","Basically, ","So ","And ","But "];
+    let sentences = t.split(/(?<=[.!?])\s+/);
+    sentences = sentences.map((s,i)=>{
+      if(i>0 && Math.random() < (opts.strength*0.06) && /^[A-Z]/.test(s)){
+        changes++;
+        const st = starters[Math.floor(Math.random()*starters.length)];
+        return st + s.charAt(0).toLowerCase()+s.slice(1);
+      }
+      return s;
+    });
+    t = sentences.join(" ");
+  }
+
+  // tidy spacing
+  t = t.replace(/[ \t]{2,}/g," ").replace(/ \n/g,"\n").replace(/\n{3,}/g,"\n\n").trim();
+  return {text:t, changes};
+}
+
+function countWords(s){ s=s.trim(); return s? s.split(/\s+/).length : 0; }
+
+function run(){
+  const input = $("input").value;
+  if(!input.trim()){ $("output").textContent="Paste some text first."; $("output").classList.add("empty"); return; }
+  const opts = {
+    punct:$("o-punct").checked, vocab:$("o-vocab").checked, phrases:$("o-phrases").checked,
+    contract:$("o-contract").checked, rhythm:$("o-rhythm").checked, imperfect:$("o-imperfect").checked,
+    strength:parseInt($("strength").value,10)
+  };
+  const {text, changes} = humanize(input, opts);
+  $("output").textContent = text;
+  $("output").classList.remove("empty");
+  $("outWords").textContent = countWords(text);
+  $("changes").textContent = changes? `Applied ${changes} edit${changes>1?"s":""}.` : "No changes needed for the selected options.";
+}
+
+$("run").onclick = run;
+$("input").addEventListener("input", ()=> $("inWords").textContent = countWords($("input").value));
+$("strength").addEventListener("input", e=>{
+  $("strengthLabel").textContent = {1:"Light",2:"Balanced",3:"Aggressive"}[e.target.value];
+});
+$("copy").onclick = async ()=>{
+  const txt = $("output").textContent;
+  if(!txt || $("output").classList.contains("empty")) return;
+  try{ await navigator.clipboard.writeText(txt);
+    $("copied").classList.add("show"); setTimeout(()=>$("copied").classList.remove("show"),1500);
+  }catch(e){}
+};
+$("clear").onclick = ()=>{ $("input").value=""; $("output").textContent="Your rewritten text will appear here."; $("output").classList.add("empty"); $("inWords").textContent="0"; $("outWords").textContent="0"; $("changes").textContent=""; };
+// ============ AI DETECTOR (local heuristic estimate) ============
+function detectAI(text){
+  const signals = [];
+  let score = 30; // neutral-ish baseline
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  const wc = words.length;
+  const sentences = (text.match(/[^.!?]+[.!?]+/g) || [text]).map(s=>s.trim()).filter(Boolean);
+
+  // 1) Burstiness — humans vary sentence length a lot; AI is uniform
+  const lens = sentences.map(s=>s.split(/\s+/).length);
+  const mean = lens.reduce((a,b)=>a+b,0)/(lens.length||1);
+  const variance = lens.reduce((a,b)=>a+(b-mean)**2,0)/(lens.length||1);
+  const sd = Math.sqrt(variance);
+  if(sentences.length>=3){
+    if(sd < 4){ score+=18; signals.push(["Low sentence-length variation","AI tends to write evenly; humans mix short and long.",true]); }
+    else if(sd > 8){ score-=12; signals.push(["High sentence-length variation","Natural rhythm — looks human.",false]); }
+  }
+
+  // 2) AI buzzwords
+  const buzz = ["delve","tapestry","intricate","myriad","plethora","leverage","utilize","facilitate","robust","seamless","holistic","synergy","paradigm","pivotal","realm","landscape","underscore","testament","elevate","embark","foster","cultivate","unveil","harness","bolster","spearhead","nuanced","multifaceted","vibrant","comprehensive"];
+  const lower = text.toLowerCase();
+  const hits = buzz.filter(b=>new RegExp("\\b"+b).test(lower));
+  if(hits.length){ const pts=Math.min(hits.length*6,30); score+=pts; signals.push([`${hits.length} AI buzzword${hits.length>1?"s":""} found`, hits.slice(0,6).join(", ")+(hits.length>6?"…":""), true]); }
+  else signals.push(["No common AI buzzwords","Clean vocabulary.",false]);
+
+  // 3) Filler transitions
+  const trans = ["moreover","furthermore","additionally","consequently","subsequently","notably","ultimately","in conclusion","it is important to note","needless to say"];
+  const tHits = trans.filter(t=>lower.includes(t));
+  if(tHits.length){ score+=Math.min(tHits.length*5,18); signals.push([`${tHits.length} formal transition${tHits.length>1?"s":""}`, tHits.slice(0,5).join(", "), true]); }
+
+  // 4) Em-dashes (AI loves them)
+  const dashes = (text.match(/[—–]/g)||[]).length;
+  if(dashes>=2){ score+=12; signals.push([`${dashes} em/en-dashes`, "Heavy dash use is a common AI tell.",true]); }
+
+  // 5) Contractions (humans use them, formal AI often doesn't)
+  const contr = (text.match(/\b\w+'(t|s|re|ve|ll|d|m)\b/gi)||[]).length;
+  const contrRate = wc? contr/wc : 0;
+  if(wc>40 && contrRate < 0.005){ score+=10; signals.push(["Almost no contractions","Formal, AI-like tone.",true]); }
+  else if(contrRate > 0.02){ score-=8; signals.push(["Natural contractions","Conversational — looks human.",false]); }
+
+  // 6) Lexical repetition / variety
+  const uniq = new Set(words.map(w=>w.toLowerCase().replace(/[^a-z']/g,""))).size;
+  const ttr = wc? uniq/wc : 1;
+  if(wc>60 && ttr < 0.4){ score+=8; signals.push(["Repetitive word choice","Low vocabulary variety.",true]); }
+
+  score = Math.max(2, Math.min(98, Math.round(score)));
+  if(wc < 25) signals.unshift(["⚠️ Short sample", "Under ~25 words — estimate is unreliable. Use GPTZero.", false]);
+  return {score, signals, wc};
+}
+
+function showResult(text){
+  if(!text.trim()){ return; }
+  const {score, signals} = detectAI(text);
+  $("result").style.display = "block";
+  $("scoreNum").textContent = score+"%";
+  $("fill").style.width = score+"%";
+  let color, verdict;
+  if(score < 35){ color="#2ea043"; verdict="Likely Human"; }
+  else if(score < 65){ color="#e3b341"; verdict="Mixed / Uncertain"; }
+  else { color="#f85149"; verdict="Likely AI"; }
+  $("fill").style.background = color;
+  $("verdict").textContent = verdict;
+  $("verdict").style.color = color;
+  $("scoreNum").style.color = color;
+  $("signals").innerHTML = signals.map(([t,d,bad])=>
+    `<li><span>${bad?"🔴":"🟢"}</span><span><b>${t}.</b> ${d}</span></li>`).join("");
+}
+
+$("check").onclick = ()=> showResult($("detInput").value);
+$("detInput").addEventListener("input", ()=> $("detWords").textContent = countWords($("detInput").value));
+$("useOutput").onclick = ()=>{
+  const txt = $("output").textContent;
+  if(!txt || $("output").classList.contains("empty")) return;
+  $("detInput").value = txt;
+  $("detWords").textContent = countWords(txt);
+  showResult(txt);
+  $("detInput").scrollIntoView({behavior:"smooth", block:"center"});
+};
+$("gptzero").onclick = async ()=>{
+  const txt = $("detInput").value.trim();
+  if(txt){ try{ await navigator.clipboard.writeText(txt);
+    $("gptzero").textContent="✅ Copied — opening GPTZero…";
+    setTimeout(()=>$("gptzero").textContent="🚀 Verify on GPTZero",2500);
+  }catch(e){} }
+  window.open("https://gptzero.me/", "_blank", "noopener");
+};
+
+$("sample").onclick = ()=>{
+  $("input").value = "In today's fast-paced world, it is important to note that artificial intelligence has become a pivotal tool. Moreover, businesses are leveraging these robust technologies to facilitate seamless workflows and unlock a myriad of opportunities. Furthermore, by harnessing cutting-edge solutions, organizations can navigate the intricate landscape of modern commerce — ultimately fostering growth that is both comprehensive and sustainable.";
+  $("inWords").textContent = countWords($("input").value);
+  run();
+};
+</script>
+</body>
+</html>
