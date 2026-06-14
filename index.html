@@ -81,12 +81,12 @@
       <label class="chk"><input type="checkbox" id="o-phrases" checked> Cut filler transitions</label>
       <label class="chk"><input type="checkbox" id="o-contract" checked> Add contractions</label>
       <label class="chk"><input type="checkbox" id="o-rhythm" checked> Vary sentence rhythm</label>
-      <label class="chk"><input type="checkbox" id="o-imperfect"> Add light human imperfection</label>
+      <label class="chk"><input type="checkbox" id="o-imperfect" checked> Add light human imperfection</label>
     </div>
     <div class="slider" style="margin-top:14px">
       Strength
-      <input type="range" id="strength" min="1" max="3" value="2">
-      <span id="strengthLabel">Balanced</span>
+      <input type="range" id="strength" min="1" max="3" value="3">
+      <span id="strengthLabel">Aggressive</span>
     </div>
   </div>
 
@@ -186,6 +186,13 @@ function preserveCase(orig, repl){
   if(orig[0] === orig[0].toUpperCase()) return repl[0].toUpperCase()+repl.slice(1);
   return repl;
 }
+function capFirst(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
+function sortVal(strength, light, balanced, aggressive){
+  return strength===1?light : strength===2?balanced : aggressive;
+}
+function splitSentences(t){
+  return (t.match(/[^.!?]+[.!?]+(\s|$)|[^.!?]+$/g) || [t]).map(s=>s.trim()).filter(Boolean);
+}
 
 function humanize(text, opts){
   let changes = 0;
@@ -229,37 +236,79 @@ function humanize(text, opts){
   }
 
   if(opts.rhythm){
-    // split a few long sentences; merge a few short ones for variety
-    let sentences = t.match(/[^.!?]+[.!?]*/g) || [t];
-    sentences = sentences.map(s=>{
+    // ---- BURSTINESS ENGINE ----
+    // GPTZero keys on uniform sentence length. We deliberately break that up:
+    // split long sentences at natural joints, then fuse some short ones.
+    const cap = sortVal(opts.strength, 26, 20, 16); // word count above which we split
+    const splitProb = sortVal(opts.strength, 0.5, 0.75, 0.95);
+    let sentences = splitSentences(t);
+    let out = [];
+
+    for(let s of sentences){
       const words = s.trim().split(/\s+/);
-      if(words.length > (opts.strength>=2?22:30) && /,/.test(s)){
-        // break at a comma near the middle
-        const idx = s.indexOf(",", s.length/3);
-        if(idx>0 && idx < s.length-15){
+      const joints = [" and ", " but ", " so ", " because ", ", which ", ", and ", ", but ", ", so ", "; "];
+      if(words.length > cap && Math.random() < splitProb){
+        // find a joint past the first third of the sentence
+        let cut = -1, lead = s.length/3;
+        for(const j of joints){
+          const idx = s.toLowerCase().indexOf(j, lead);
+          if(idx > 0 && idx < s.length-12){ cut = idx; var jLen = j.length; break; }
+        }
+        // fall back to a comma
+        if(cut < 0){ const c = s.indexOf(",", lead); if(c>0 && c<s.length-12){ cut=c; jLen=1; } }
+        if(cut > 0){
           changes++;
-          let a = s.slice(0,idx).trim();
-          let b = s.slice(idx+1).trim();
+          let a = s.slice(0, cut).trim().replace(/[,;]+$/,"");
+          let b = s.slice(cut+jLen).trim().replace(/^(and|but|so|because|which)\b\s*/i,"");
+          a = a.replace(/[.!?]+$/,"") + ".";
           b = b.charAt(0).toUpperCase()+b.slice(1);
-          return a + ". " + b + (/[.!?]$/.test(b)?"":"");
+          if(!/[.!?]$/.test(b)) b += ".";
+          out.push(a); out.push(b);
+          continue;
         }
       }
-      return s;
-    });
-    t = sentences.join(" ").replace(/\s+/g," ").replace(/\s+([.,!?;:])/g,"$1");
+      out.push(s.trim());
+    }
+
+    // Fuse a couple of adjacent SHORT sentences to widen the length spread.
+    const fuseProb = sortVal(opts.strength, 0.2, 0.35, 0.55);
+    let fused = [];
+    for(let i=0;i<out.length;i++){
+      const cur = out[i], nxt = out[i+1];
+      const cw = cur.split(/\s+/).length, nw = nxt? nxt.split(/\s+/).length : 99;
+      if(nxt && cw<=11 && nw<=12 && Math.random()<fuseProb){
+        changes++;
+        const joiner = Math.random()<0.5 ? ", and " : ", ";
+        let merged = cur.replace(/[.!?]+$/,"") + joiner + nxt.charAt(0).toLowerCase()+nxt.slice(1);
+        fused.push(merged); i++;
+      } else fused.push(cur);
+    }
+    t = fused.join(" ").replace(/\s+/g," ").replace(/\s+([.,!?;:])/g,"$1");
   }
 
   if(opts.imperfect){
-    // occasionally start a sentence with a casual connector — sparing
-    const starters = ["Honestly, ","Basically, ","So ","And ","But "];
-    let sentences = t.split(/(?<=[.!?])\s+/);
+    // Human irregularity: lead-in connectors + occasional clause fronting.
+    const starters = ["Honestly, ","Look, ","So ","And ","But ","Truth is, ","Frankly, ","That said, "];
+    let sentences = splitSentences(t);
     sentences = sentences.map((s,i)=>{
-      if(i>0 && Math.random() < (opts.strength*0.06) && /^[A-Z]/.test(s)){
+      let r = s.trim();
+      // front a trailing "because/which/so" clause occasionally -> changes word order, raises perplexity
+      const m = r.match(/^(.*?),\s+(because|which|so that|even though|although)\s+(.+?)([.!?])$/i);
+      if(m && Math.random() < opts.strength*0.12){
+        changes++;
+        let tail = m[3].charAt(0).toUpperCase()+m[3].slice(1);
+        r = m[2].toLowerCase()==="which"
+            ? r // skip "which" fronting (awkward)
+            : `${capFirst(m[2])} ${m[3]}, ${m[1].charAt(0).toLowerCase()+m[1].slice(1)}${m[4]}`;
+      }
+      if(i>0 && Math.random() < opts.strength*0.10 && /^[A-Z]/.test(r)){
         changes++;
         const st = starters[Math.floor(Math.random()*starters.length)];
-        return st + s.charAt(0).toLowerCase()+s.slice(1);
+        // lowercase the following word (it's now mid-sentence) unless it's "I"
+        const next = /^I\b/.test(r) ? r : r.charAt(0).toLowerCase()+r.slice(1);
+        r = st + next;
       }
-      return s;
+      return r;
     });
     t = sentences.join(" ");
   }
