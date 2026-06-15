@@ -321,9 +321,35 @@ function humanize(text, opts){
 
 function countWords(s){ s=s.trim(); return s? s.split(/\s+/).length : 0; }
 
-function run(){
+async function run(){
   const input = $("input").value;
   if(!input.trim()){ $("output").textContent="Paste some text first."; $("output").classList.add("empty"); return; }
+
+  // AI rewrite path (backend) — most effective at beating detectors
+  if($("aiMode") && $("aiMode").checked){
+    const strengthName = {1:"light",2:"balanced",3:"aggressive"}[$("strength").value];
+    $("run").disabled = true;
+    $("output").classList.remove("empty");
+    $("output").textContent = "🤖 Rewriting with AI…";
+    $("changes").textContent = "";
+    try{
+      const r = await fetch("/api/humanize", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ text: input, strength: strengthName })
+      });
+      const data = await r.json();
+      if(!r.ok) throw new Error(data.error || "Request failed");
+      $("output").textContent = data.text;
+      $("outWords").textContent = countWords(data.text);
+      $("changes").textContent = "Rewritten by Claude (AI backend).";
+    }catch(err){
+      $("output").textContent = "AI rewrite failed: " + err.message + "\n\nFalling back to the free in-browser engine — click Humanize again with AI rewrite off.";
+    }finally{
+      $("run").disabled = false;
+    }
+    return;
+  }
+
   const opts = {
     punct:$("o-punct").checked, vocab:$("o-vocab").checked, phrases:$("o-phrases").checked,
     contract:$("o-contract").checked, rhythm:$("o-rhythm").checked, imperfect:$("o-imperfect").checked,
@@ -337,6 +363,11 @@ function run(){
 }
 
 $("run").onclick = run;
+
+// Reveal the AI-rewrite toggle only when the backend is actually available
+fetch("/api/status").then(r=>r.json()).then(d=>{
+  if(d && d.aiBackend){ $("aiModeWrap").style.display = "flex"; }
+}).catch(()=>{});
 $("input").addEventListener("input", ()=> $("inWords").textContent = countWords($("input").value));
 $("strength").addEventListener("input", e=>{
   $("strengthLabel").textContent = {1:"Light",2:"Balanced",3:"Aggressive"}[e.target.value];
